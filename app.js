@@ -7,6 +7,8 @@ require('dotenv').config();
 
 // rutas
 // aqupi poner las rutas que se generen
+// rutas
+const loginRoutes = require('./routers/login.routes');
 
 //------------------------------------------------ CONFIGS ------------------------------------------------
 const { connectDB } = require('./config/db.config');
@@ -33,6 +35,16 @@ app.use(cors({
 }));
 
 //------------------------------------------------ RUTAS ------------------------------------------------
+app.use(apiBasePath, require('./routers/login.routes'));
+app.use(apiBasePath, require('./routers/usuario.routes'));
+app.use(apiBasePath, require('./routers/equipo.routes'));
+app.use(apiBasePath, require('./routers/categoria.routes'));
+app.use(apiBasePath, require('./routers/campana.routes'));
+app.use(apiBasePath, require('./routers/participacion.routes'));
+app.use(apiBasePath, require('./routers/diagnostico.routes'));
+app.use(apiBasePath, require('./routers/reparacion.routes'));
+app.use(apiBasePath, require('./routers/movimiento.routes'));
+app.use(apiBasePath, require('./routers/gestor.routes'));
 
 //------------------------------------------------ SERVER ------------------------------------------------
 server.listen(PORT, '0.0.0.0', () => {

@@ -1,28 +1,41 @@
 //------------------------------------------------ IMPORTS ------------------------------------------------
-const jwt = require('jsonwebtoken');
-require('dotenv').config();
-
+// (no requiere jwt: authenticateToken ya pobló req.user)
 //------------------------------------------------ MIDDLEWARES ------------------------------------------------
-const roleAuthorization = (allowedRoles) => {
-    return (req, res, next) => {
-        const authHeader = req.headers['authorization'];
-        const token = authHeader && authHeader.split(' ')[1];
-        if (!token) {
-            return res.status(401).json({ message: 'Token no proporcionado' });
-        }
-        jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
-            if (err) {
-                return res.status(403).json({ message: 'Token inválido' });
-            }
-            if (!allowedRoles.includes(user.rol)) {
-                return res.status(403).json({ message: 'Acceso denegado: rol no autorizado' });
-            }
-            req.user = user;
-            next();
-        });
-    };
+/**
+ * Autoriza según rol. Debe usarse DESPUÉS de authenticateToken.
+ *
+ * Uso:
+ *   roleAuthorization(['administrador'])
+ *   roleAuthorization('administrador')          // string también funciona
+ *   roleAuthorization(['capturista','responsable','administrador'])
+ *
+ * Si el usuario no está autenticado → 401
+ * Si el rol no está permitido       → 403
+ * Si pasa                          → next()
+ */
+const roleAuthorization = (roles) => {
+  const allowedRoles = Array.isArray(roles) ? roles : [roles];
+
+  return (req, res, next) => {
+    if (!req.user) {
+      // Defensa: si por error no se puso authenticateToken antes,
+      // no dejamos pasar silenciosamente.
+      return res.status(401).json({ message: 'No autenticado' });
+    }
+
+    const rolUsuario = String(req.user.rol || '').toLowerCase();
+    const permitido = allowedRoles
+      .map((r) => String(r).toLowerCase())
+      .includes(rolUsuario);
+
+    if (!permitido) {
+      return res.status(403).json({
+        message: 'Acceso denegado: rol no autorizado',
+      });
+    }
+
+    next();
+  };
 };
 
-module.exports = {
-    roleAuthorization
-};
+module.exports = { roleAuthorization };
