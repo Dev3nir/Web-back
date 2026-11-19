@@ -5,6 +5,10 @@ const http = require('http');
 
 require('dotenv').config();
 
+BigInt.prototype.toJSON = function () {
+  return Number(this);
+};
+
 // rutas
 // aqupi poner las rutas que se generen
 // rutas
