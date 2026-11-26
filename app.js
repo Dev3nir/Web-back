@@ -49,6 +49,7 @@ app.use(apiBasePath, require('./routers/diagnostico.routes'));
 app.use(apiBasePath, require('./routers/reparacion.routes'));
 app.use(apiBasePath, require('./routers/movimiento.routes'));
 app.use(apiBasePath, require('./routers/gestor.routes'));
+app.use(apiBasePath, require('./routers/indicador.routes'));
 
 //------------------------------------------------ SERVER ------------------------------------------------
 server.listen(PORT, '0.0.0.0', () => {
