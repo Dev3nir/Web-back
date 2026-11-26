@@ -1,61 +1,55 @@
 //------------------------------------------------ IMPORTS ------------------------------------------------
 const { pool } = require('../config/db.config');
 
-/**
- * MODELO: reparaciones
- *
- * ⚠️ AJUSTA si tu tabla difiere. Columnas asumidas:
- *   id, diagnostico_id, usuario_id, fecha_inicio, fecha_fin,
- *   descripcion, costo,
- *   estado ('pendiente'|'en_proceso'|'completada'), creado_en
- * Se hace JOIN con diagnosticos (descripcion, equipo_id) y usuarios (nombre_completo).
- */
-
 //------------------------------------------------ MODELO ------------------------------------------------
+/**
+ * Tabla real `reparaciones`:
+ *   id, equipo_id, diagnostico_id, descripcion (text), costo (decimal),
+ *   ahorro_estimado (decimal), fecha (date), responsable_id
+ */
 class ReparacionModel {
-  /**
-   * Lista todas las reparaciones, con el diagnóstico y el responsable.
-   * Más recientes primero.
-   */
   static async listar() {
     return pool.query(
       `SELECT r.*,
-              d.descripcion AS diagnostico_descripcion,
-              d.equipo_id   AS equipo_id,
+              d.diagnostico AS diagnostico_descripcion,
               u.nombre_completo AS responsable_nombre
        FROM reparaciones r
        LEFT JOIN diagnosticos d ON d.id = r.diagnostico_id
-       LEFT JOIN usuarios     u ON u.id = r.usuario_id
+       LEFT JOIN usuarios     u ON u.id = r.responsable_id
        ORDER BY r.id DESC`
     );
   }
 
-  /**
-   * Devuelve una reparación por id. Retorna null si no existe.
-   */
   static async obtener(id) {
     const rows = await pool.query(
       `SELECT r.*,
-              d.descripcion AS diagnostico_descripcion,
-              d.equipo_id   AS equipo_id,
+              d.diagnostico AS diagnostico_descripcion,
               u.nombre_completo AS responsable_nombre
        FROM reparaciones r
        LEFT JOIN diagnosticos d ON d.id = r.diagnostico_id
-       LEFT JOIN usuarios     u ON u.id = r.usuario_id
+       LEFT JOIN usuarios     u ON u.id = r.responsable_id
        WHERE r.id = ?`,
       [id]
     );
     return rows[0] || null;
   }
 
-  /**
-   * Reparaciones ligadas a un diagnóstico.
-   */
+  static async porEquipo(equipoId) {
+    return pool.query(
+      `SELECT r.*, u.nombre_completo AS responsable_nombre
+       FROM reparaciones r
+       LEFT JOIN usuarios u ON u.id = r.responsable_id
+       WHERE r.equipo_id = ?
+       ORDER BY r.id DESC`,
+      [equipoId]
+    );
+  }
+
   static async porDiagnostico(diagnosticoId) {
     return pool.query(
       `SELECT r.*, u.nombre_completo AS responsable_nombre
        FROM reparaciones r
-       LEFT JOIN usuarios u ON u.id = r.usuario_id
+       LEFT JOIN usuarios u ON u.id = r.responsable_id
        WHERE r.diagnostico_id = ?
        ORDER BY r.id DESC`,
       [diagnosticoId]
@@ -63,59 +57,51 @@ class ReparacionModel {
   }
 
   /**
-   * Crea una reparación.
-   * data = { diagnostico_id, usuario_id, fecha_inicio?, fecha_fin?,
-   *          descripcion, costo?, estado? }
-   * fecha_inicio se pone con NOW() si no se manda (ajusta según tu columna).
-   * Retorna el id insertado.
+   * data = { equipo_id, diagnostico_id?, descripcion, costo?, ahorro_estimado?, fecha, responsable_id }
+   * fecha es NOT NULL: la manda el front en "YYYY-MM-DD"
    */
   static async crear(data) {
     const result = await pool.query(
       `INSERT INTO reparaciones
-         (diagnostico_id, usuario_id, fecha_inicio, fecha_fin, descripcion, costo, estado)
-       VALUES (?, ?, COALESCE(?, NOW()), ?, ?, ?, ?)`,
+         (equipo_id, diagnostico_id, descripcion, costo, ahorro_estimado, fecha, responsable_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
-        data.diagnostico_id,
-        data.usuario_id ?? null,
-        data.fecha_inicio ?? null,
-        data.fecha_fin ?? null,
+        data.equipo_id,
+        data.diagnostico_id ?? null,
         data.descripcion,
         data.costo ?? 0,
-        data.estado ?? 'pendiente',
+        data.ahorro_estimado ?? 0,
+        data.fecha,
+        data.responsable_id,
       ]
     );
-    return result.insertId;
+    return Number(result.insertId);
   }
 
   /**
-   * Actualiza una reparación.
-   * data = { fecha_inicio?, fecha_fin?, descripcion, costo?, estado? }
-   * Retorna true si se modificó algo.
+   * data = { diagnostico_id?, descripcion, costo?, ahorro_estimado?, fecha }
    */
   static async actualizar(id, data) {
     const result = await pool.query(
       `UPDATE reparaciones
-       SET fecha_inicio = ?,
-           fecha_fin    = ?,
-           descripcion  = ?,
-           costo        = ?,
-           estado       = ?
+       SET diagnostico_id  = ?,
+           descripcion     = ?,
+           costo           = ?,
+           ahorro_estimado = ?,
+           fecha           = ?
        WHERE id = ?`,
       [
-        data.fecha_inicio ?? null,
-        data.fecha_fin ?? null,
+        data.diagnostico_id ?? null,
         data.descripcion,
         data.costo ?? 0,
-        data.estado ?? 'pendiente',
+        data.ahorro_estimado ?? 0,
+        data.fecha,
         id,
       ]
     );
     return result.affectedRows > 0;
   }
 
-  /**
-   * Elimina una reparación (DELETE real). Retorna true si se eliminó.
-   */
   static async eliminar(id) {
     const result = await pool.query(
       'DELETE FROM reparaciones WHERE id = ?',

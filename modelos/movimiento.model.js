@@ -4,44 +4,41 @@ const { pool } = require('../config/db.config');
 //------------------------------------------------ MODELO ------------------------------------------------
 /**
  * Repositorio de la tabla `movimientos`.
- * Cada fila es un paso en la vida de un equipo: ingreso, reasignación,
- * reparación, resguardo, entrega a gestor o baja. Así se arma el historial.
+ * Registra el destino de cada equipo (reasignación, reutilización,
+ * conservación o entrega a gestor especializado).
  *
- * Solo consultas a la BD; las reglas de negocio están en el controlador
- * y en servicios/movimiento.strategies.js
+ * Esquema real:
+ *   id, equipo_id, tipo, destino, gestor_id, peso_kg, fecha,
+ *   responsable_id, observaciones
  */
-
-// SELECT base con los datos legibles del equipo, el responsable y el gestor
 const SELECT_DETALLE = `
   SELECT m.*,
+         e.codigo          AS equipo_codigo,
          e.marca           AS equipo_marca,
          e.modelo          AS equipo_modelo,
          u.nombre_completo AS responsable_nombre,
-         v.nombre_completo AS validado_por_nombre,
-         g.nombre          AS gestor_nombre,
-         g.verificado      AS gestor_verificado
+         g.nombre          AS gestor_nombre
   FROM movimientos m
-  LEFT JOIN equipos  e ON e.id = m.id_equipo
-  LEFT JOIN usuarios u ON u.id = m.id_responsable
-  LEFT JOIN usuarios v ON v.id = m.validado_por
-  LEFT JOIN gestores g ON g.id = m.id_gestor
+  LEFT JOIN equipos  e ON e.id = m.equipo_id
+  LEFT JOIN usuarios u ON u.id = m.responsable_id
+  LEFT JOIN gestores g ON g.id = m.gestor_id
 `;
 
 class MovimientoModel {
-  // Campos editables (whitelist para el UPDATE)
-  static CAMPOS = ['id_equipo', 'tipo', 'fecha', 'destino', 'id_gestor',
-                   'cantidad_kg', 'evidencia', 'observaciones'];
+  static CAMPOS = [
+    'equipo_id', 'tipo', 'fecha', 'destino',
+    'gestor_id', 'peso_kg', 'observaciones',
+  ];
 
   /**
-   * filtros = { id_equipo?, tipo?, validado?: 0|1, desde?: 'YYYY-MM-DD', hasta?: 'YYYY-MM-DD' }
+   * filtros = { equipo_id?, tipo?, desde?, hasta? }
    */
   static async listar(filtros = {}) {
     const where = [];
     const params = [];
 
-    if (filtros.id_equipo) { where.push('m.id_equipo = ?'); params.push(filtros.id_equipo); }
+    if (filtros.equipo_id) { where.push('m.equipo_id = ?'); params.push(filtros.equipo_id); }
     if (filtros.tipo)      { where.push('m.tipo = ?');      params.push(filtros.tipo); }
-    if (filtros.validado !== undefined) { where.push('m.validado = ?'); params.push(filtros.validado); }
     if (filtros.desde)     { where.push('m.fecha >= ?');    params.push(filtros.desde); }
     if (filtros.hasta)     { where.push('m.fecha < DATE_ADD(?, INTERVAL 1 DAY)'); params.push(filtros.hasta); }
 
@@ -52,10 +49,10 @@ class MovimientoModel {
   }
 
   /** Historial completo de un equipo, del más antiguo al más reciente. */
-  static async historialEquipo(idEquipo) {
+  static async historialEquipo(equipoId) {
     return pool.query(
-      `${SELECT_DETALLE} WHERE m.id_equipo = ? ORDER BY m.fecha ASC, m.id ASC`,
-      [idEquipo]
+      `${SELECT_DETALLE} WHERE m.equipo_id = ? ORDER BY m.fecha ASC, m.id ASC`,
+      [equipoId]
     );
   }
 
@@ -68,22 +65,20 @@ class MovimientoModel {
   static async crear(data) {
     const result = await pool.query(
       `INSERT INTO movimientos
-         (id_equipo, tipo, fecha, id_responsable, destino, id_gestor,
-          cantidad_kg, evidencia, observaciones)
-       VALUES (?, ?, COALESCE(?, NOW()), ?, ?, ?, ?, ?, ?)`,
+         (equipo_id, tipo, fecha, responsable_id, destino, gestor_id, peso_kg, observaciones)
+       VALUES (?, ?, COALESCE(?, NOW()), ?, ?, ?, ?, ?)`,
       [
-        data.id_equipo,
+        data.equipo_id,
         data.tipo,
         data.fecha ?? null,
-        data.id_responsable,
-        data.destino ?? null,
-        data.id_gestor ?? null,
-        data.cantidad_kg ?? null,
-        data.evidencia ?? null,
+        data.responsable_id,
+        data.destino,
+        data.gestor_id ?? null,
+        data.peso_kg ?? null,
         data.observaciones ?? null,
       ]
     );
-    return result.insertId;
+    return Number(result.insertId);
   }
 
   /** Actualiza solo los campos que vengan en data. */
@@ -94,17 +89,6 @@ class MovimientoModel {
     const set = campos.map((c) => `${c} = ?`).join(', ');
     const params = [...campos.map((c) => data[c]), id];
     const result = await pool.query(`UPDATE movimientos SET ${set} WHERE id = ?`, params);
-    return result.affectedRows > 0;
-  }
-
-  /** Marca el movimiento como validado por un responsable ambiental / admin. */
-  static async validar(id, idUsuario) {
-    const result = await pool.query(
-      `UPDATE movimientos
-       SET validado = 1, validado_por = ?, validado_en = NOW()
-       WHERE id = ? AND validado = 0`,
-      [idUsuario, id]
-    );
     return result.affectedRows > 0;
   }
 

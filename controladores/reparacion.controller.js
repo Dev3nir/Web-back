@@ -1,47 +1,30 @@
 //------------------------------------------------ IMPORTS ------------------------------------------------
 const ReparacionModel = require('../modelos/reparacion.model');
 
-const ESTADOS = ['pendiente', 'en_proceso', 'completada'];
-
 //------------------------------------------------ CONTROLADORES ------------------------------------------------
-/**
- * GET /api/v1/reparaciones
- * (capturista, responsable, administrador)
- */
 exports.listar = async (req, res) => {
   try {
-    const reparaciones = await ReparacionModel.listar();
-    return res.json(reparaciones);
+    return res.json(await ReparacionModel.listar());
   } catch (error) {
     console.error('Error listar reparaciones:', error);
     return res.status(500).json({ message: 'Error interno del servidor' });
   }
 };
 
-/**
- * GET /api/v1/reparaciones/:id
- */
 exports.obtener = async (req, res) => {
   try {
-    const reparacion = await ReparacionModel.obtener(req.params.id);
-    if (!reparacion) {
-      return res.status(404).json({ message: 'Reparación no encontrada' });
-    }
-    return res.json(reparacion);
+    const r = await ReparacionModel.obtener(req.params.id);
+    if (!r) return res.status(404).json({ message: 'Reparación no encontrada' });
+    return res.json(r);
   } catch (error) {
     console.error('Error obtener reparacion:', error);
     return res.status(500).json({ message: 'Error interno del servidor' });
   }
 };
 
-/**
- * GET /api/v1/reparaciones/diagnostico/:diagnosticoId
- * Reparaciones ligadas a un diagnóstico.
- */
 exports.porDiagnostico = async (req, res) => {
   try {
-    const reparaciones = await ReparacionModel.porDiagnostico(req.params.diagnosticoId);
-    return res.json(reparaciones);
+    return res.json(await ReparacionModel.porDiagnostico(req.params.diagnosticoId));
   } catch (error) {
     console.error('Error listar reparaciones por diagnostico:', error);
     return res.status(500).json({ message: 'Error interno del servidor' });
@@ -49,45 +32,51 @@ exports.porDiagnostico = async (req, res) => {
 };
 
 /**
- * POST /api/v1/reparaciones
- * (responsable, administrador)
- * Body: { diagnostico_id, descripcion, fecha_inicio?, fecha_fin?, costo?, estado? }
- * El usuario_id se toma del token (quien registra la reparación).
+ * POST /reparaciones
+ * Body: { equipo_id, diagnostico_id?, descripcion, costo?, ahorro_estimado?, fecha }
+ * responsable_id viene del JWT.
  */
 exports.crear = async (req, res) => {
   try {
-    const { diagnostico_id, descripcion, fecha_inicio, fecha_fin, costo, estado } = req.body || {};
+    const {
+      equipo_id,
+      diagnostico_id,
+      descripcion,
+      costo,
+      ahorro_estimado,
+      fecha,
+    } = req.body || {};
 
-    // Validaciones básicas
-    if (!diagnostico_id || !descripcion) {
+    if (!equipo_id || !descripcion || !fecha) {
       return res.status(400).json({
-        message: 'Faltan campos obligatorios: diagnostico_id, descripcion',
+        message: 'Faltan campos obligatorios: equipo_id, descripcion, fecha',
       });
     }
 
-    if (estado && !ESTADOS.includes(estado)) {
-      return res.status(400).json({ message: 'Estado inválido (pendiente, en_proceso, completada)' });
+    if (costo !== undefined && (isNaN(Number(costo)) || Number(costo) < 0)) {
+      return res.status(400).json({ message: 'El costo debe ser un número >= 0' });
     }
 
-    if (costo !== undefined && (isNaN(Number(costo)) || Number(costo) < 0)) {
-      return res.status(400).json({ message: 'El costo debe ser un número mayor o igual a 0' });
+    if (ahorro_estimado !== undefined && (isNaN(Number(ahorro_estimado)) || Number(ahorro_estimado) < 0)) {
+      return res.status(400).json({ message: 'El ahorro estimado debe ser un número >= 0' });
     }
 
     const id = await ReparacionModel.crear({
-      diagnostico_id,
-      usuario_id: req.user?.id_usuario ?? null, // viene del JWT
-      fecha_inicio: fecha_inicio || null,
-      fecha_fin: fecha_fin || null,
+      equipo_id,
+      diagnostico_id: diagnostico_id ?? null,
       descripcion,
       costo: costo ?? 0,
-      estado: estado || 'pendiente',
+      ahorro_estimado: ahorro_estimado ?? 0,
+      fecha,
+      responsable_id: req.user?.id_usuario ?? null,
     });
 
     return res.status(201).json({ id, message: 'Reparación creada' });
   } catch (error) {
-    // FK inválida (diagnostico_id no existe)
     if (error.code === 'ER_NO_REFERENCED_ROW_2') {
-      return res.status(400).json({ message: 'El diagnóstico indicado no existe' });
+      return res.status(400).json({
+        message: 'El equipo o el diagnóstico indicado no existe',
+      });
     }
     console.error('Error crear reparacion:', error);
     return res.status(500).json({ message: 'Error interno del servidor' });
@@ -95,56 +84,56 @@ exports.crear = async (req, res) => {
 };
 
 /**
- * PUT /api/v1/reparaciones/:id
- * (responsable, administrador)
- * Body: { descripcion, fecha_inicio?, fecha_fin?, costo?, estado? }
+ * PUT /reparaciones/:id
+ * Body: { diagnostico_id?, descripcion, costo?, ahorro_estimado?, fecha }
  */
 exports.actualizar = async (req, res) => {
   try {
-    const { id } = req.params;
-    const { descripcion, fecha_inicio, fecha_fin, costo, estado } = req.body || {};
+    const {
+      diagnostico_id,
+      descripcion,
+      costo,
+      ahorro_estimado,
+      fecha,
+    } = req.body || {};
 
-    if (!descripcion) {
-      return res.status(400).json({ message: 'descripcion es obligatoria' });
-    }
-
-    if (estado && !ESTADOS.includes(estado)) {
-      return res.status(400).json({ message: 'Estado inválido (pendiente, en_proceso, completada)' });
+    if (!descripcion || !fecha) {
+      return res.status(400).json({
+        message: 'descripcion y fecha son obligatorias',
+      });
     }
 
     if (costo !== undefined && (isNaN(Number(costo)) || Number(costo) < 0)) {
-      return res.status(400).json({ message: 'El costo debe ser un número mayor o igual a 0' });
+      return res.status(400).json({ message: 'El costo debe ser un número >= 0' });
     }
 
-    const actualizado = await ReparacionModel.actualizar(id, {
-      fecha_inicio: fecha_inicio || null,
-      fecha_fin: fecha_fin || null,
+    if (ahorro_estimado !== undefined && (isNaN(Number(ahorro_estimado)) || Number(ahorro_estimado) < 0)) {
+      return res.status(400).json({ message: 'El ahorro estimado debe ser un número >= 0' });
+    }
+
+    const ok = await ReparacionModel.actualizar(req.params.id, {
+      diagnostico_id: diagnostico_id ?? null,
       descripcion,
       costo: costo ?? 0,
-      estado: estado || 'pendiente',
+      ahorro_estimado: ahorro_estimado ?? 0,
+      fecha,
     });
 
-    if (!actualizado) {
-      return res.status(404).json({ message: 'Reparación no encontrada' });
-    }
-
+    if (!ok) return res.status(404).json({ message: 'Reparación no encontrada' });
     return res.json({ message: 'Reparación actualizada' });
   } catch (error) {
+    if (error.code === 'ER_NO_REFERENCED_ROW_2') {
+      return res.status(400).json({ message: 'El diagnóstico indicado no existe' });
+    }
     console.error('Error actualizar reparacion:', error);
     return res.status(500).json({ message: 'Error interno del servidor' });
   }
 };
 
-/**
- * DELETE /api/v1/reparaciones/:id
- * (solo administrador)
- */
 exports.eliminar = async (req, res) => {
   try {
-    const eliminado = await ReparacionModel.eliminar(req.params.id);
-    if (!eliminado) {
-      return res.status(404).json({ message: 'Reparación no encontrada' });
-    }
+    const ok = await ReparacionModel.eliminar(req.params.id);
+    if (!ok) return res.status(404).json({ message: 'Reparación no encontrada' });
     return res.json({ message: 'Reparación eliminada' });
   } catch (error) {
     console.error('Error eliminar reparacion:', error);

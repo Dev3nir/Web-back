@@ -21,7 +21,6 @@ router.get(`${base}/equipo/:idEquipo`,  authenticateToken, roleAuthorization(lec
 router.get(base,                        authenticateToken, roleAuthorization(lectura), c.listar);
 router.get(`${base}/:id`,               authenticateToken, roleAuthorization(lectura), c.obtener);
 router.post(base,                       authenticateToken, roleAuthorization(escritura), c.crear);
-router.put(`${base}/:id/validar`,       authenticateToken, roleAuthorization(lectura), c.validar);
 router.put(`${base}/:id`,               authenticateToken, roleAuthorization(escritura), c.actualizar);
 router.delete(`${base}/:id`,            authenticateToken, roleAuthorization(soloAdmin), c.eliminar);
 
